@@ -24,7 +24,7 @@ public class UserService {
         String password = requestDto.getPassword();
         String nickname = requestDto.getNickname();
 
-        Boolean isUserExist = userRepository.findByUsername(username);
+        Boolean isUserExist = userRepository.existsByUsername(username);
 
         if (isUserExist) {
             throw new IllegalArgumentException("Username is already in use");
