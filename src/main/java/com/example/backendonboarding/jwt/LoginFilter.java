@@ -1,5 +1,7 @@
 package com.example.backendonboarding.jwt;
 
+import com.example.backendonboarding.entity.Refresh;
+import com.example.backendonboarding.repository.RefreshRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,20 +15,23 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import java.util.Collection;
+import java.util.Date;
 import java.util.Iterator;
 
 public class LoginFilter extends UsernamePasswordAuthenticationFilter {
 
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
+    private final RefreshRepository refreshRepository;
 
     public static long ACCESS_TOKEN_EXPIRATION_TIME = 600000L;
     public static long REFRESH_TOKEN_EXPIRATION_TIME = 86400000L;
     public static int COOKIE_MAX_AGE = 24*60*60;
 
-    public LoginFilter(AuthenticationManager authenticationManager, JwtUtil jwtUtil) {
+    public LoginFilter(AuthenticationManager authenticationManager, JwtUtil jwtUtil, RefreshRepository refreshRepository) {
         this.authenticationManager = authenticationManager;
         this.jwtUtil = jwtUtil;
+        this.refreshRepository = refreshRepository;
     }
 
     @Override
@@ -52,6 +57,8 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
         String access = jwtUtil.createJwt("access", username, role, ACCESS_TOKEN_EXPIRATION_TIME);
         String refresh = jwtUtil.createJwt("refresh", username, role, REFRESH_TOKEN_EXPIRATION_TIME);
 
+        saveNewRefresh(username, refresh, REFRESH_TOKEN_EXPIRATION_TIME);
+
         response.setHeader("access", access);
         response.addCookie(createCookie("refresh", refresh));
         response.setStatus(HttpStatus.OK.value());
@@ -63,6 +70,17 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
         cookie.setHttpOnly(true);
 
         return cookie;
+    }
+
+    private void saveNewRefresh(String username, String refresh, long expiredNs) {
+        Date date = new Date(System.currentTimeMillis() + expiredNs);
+
+        Refresh newRefresh = new Refresh();
+        newRefresh.setUsername(username);
+        newRefresh.setRefresh(refresh);
+        newRefresh.setExpiration(date.toString());
+
+        refreshRepository.save(newRefresh);
     }
 
     @Override
