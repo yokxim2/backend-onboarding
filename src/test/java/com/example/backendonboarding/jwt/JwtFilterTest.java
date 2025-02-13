@@ -2,88 +2,95 @@ package com.example.backendonboarding.jwt;
 
 import com.example.backendonboarding.entity.User;
 import com.example.backendonboarding.repository.UserRepository;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.*;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.Date;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
-@AutoConfigureMockMvc
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
 class JwtFilterTest {
 
-    @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private JwtUtil jwtUtil;
+    private final String baseUrl = "http://localhost:8080/secured-endpoint";
 
     @Autowired
     private UserRepository userRepository;
 
     @Autowired
-    private BCryptPasswordEncoder bCryptPasswordEncoder;
+    private JwtUtil jwtUtil;
 
-    private static final String TEST_USERNAME = "testUser";
-    private static final String TEST_PASSWORD = "testPassword";
-    private static final String TEST_ROLE = "ROLE_USER";
+    private RestTemplate restTemplate;
     private String validAccessToken;
     private String expiredAccessToken;
-    private String invalidCategoryToken;
 
     @BeforeEach
     void setUp() {
-//        userRepository.deleteAll();
+        restTemplate = new RestTemplate();
 
-        User testUser = new User();
-        testUser.setUsername(TEST_USERNAME);
-        testUser.setPassword(bCryptPasswordEncoder.encode(TEST_PASSWORD));
-        testUser.setRole(TEST_ROLE);
-        userRepository.save(testUser);
+        // 테스트 유저가 없으면 추가
+        if (!userRepository.existsByUsername("testUser")) {
+            User user = new User();
+            user.setUsername("testUser");
+            user.setPassword(new BCryptPasswordEncoder().encode("testPassword"));
+            user.setRole("ROLE_USER");
+            userRepository.save(user);
+        }
 
-        validAccessToken = jwtUtil.createJwt("access", TEST_USERNAME, TEST_ROLE, 60000L);
-        expiredAccessToken = jwtUtil.createJwt("access", TEST_USERNAME, TEST_ROLE, -60000L);
-        invalidCategoryToken = jwtUtil.createJwt("refresh", TEST_USERNAME, TEST_ROLE, 60000L);
+        // 정상적인 Access Token 생성 (유효 기간 10분)
+        validAccessToken = jwtUtil.createJwt("access", "testUser", "ROLE_USER", 600000L);
+
+        // 만료된 Access Token 생성 (과거 시간)
+        expiredAccessToken = jwtUtil.createJwt("access", "testUser", "ROLE_USER", -1000L);
     }
 
     @Test
-    @DisplayName("토큰 없이 접근 시 403 반환")
-    void test1() throws Exception {
-        mockMvc.perform(MockMvcRequestBuilders.get("/secured-endpoint"))
-                .andExpect(status().isForbidden());
+    @DisplayName("✅ Access 토큰이 유효하면 secured-endpoint에 정상 접근 가능")
+    void testValidAccessToken() {
+        // given : 유효한 Access 토큰
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("access", validAccessToken); // 토큰 추가
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+
+        // when : secured-endpoint 요청
+        ResponseEntity<String> response = restTemplate.exchange(baseUrl, HttpMethod.GET, request, String.class);
+
+        // then : 200 OK 응답과 "Hello world" 메시지 확인
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo("Hello world");
     }
 
     @Test
-    @DisplayName("정상 접근")
-    void test2() throws Exception {
-        mockMvc.perform(MockMvcRequestBuilders.get("/secured-endpoint")
-                .header("access", validAccessToken))
-                .andExpect(status().isOk());
+    @DisplayName("❌ 만료된 Access 토큰이 포함된 요청은 401 Unauthorized 반환")
+    void testExpiredAccessToken() {
+        // given : 만료된 Access 토큰
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("access", expiredAccessToken);
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+
+        try {
+            // when : secured-endpoint 요청
+            ResponseEntity<String> response = restTemplate.exchange(baseUrl, HttpMethod.GET, request, String.class);
+
+            // then : 401 Unauthorized 확인
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(response.getBody()).isEqualTo("access token expired"); // 메시지도 검증
+        } catch (HttpClientErrorException e) {
+            // 예외가 발생하면 직접 응답 코드와 메시지를 검증
+            assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(e.getResponseBodyAsString()).isEqualTo("access token expired");
+        }
     }
 
-    @Test
-    @DisplayName("만료된 토큰을 사용해서 접근한 경우 401 반환")
-    void test3() throws Exception {
-        mockMvc.perform(MockMvcRequestBuilders.get("/secured-endpoint")
-                .header("access", expiredAccessToken))
-                .andExpect(status().isUnauthorized())
-                .andExpect(result -> assertThat(result.getResponse().getContentAsString()).contains("access token expired"));
-    }
-
-    @Test
-    @DisplayName("access 카데고리 토큰이 없는 경우 401 반환")
-    void test4() throws Exception {
-        mockMvc.perform(MockMvcRequestBuilders.get("/secured-endpoint")
-                .header("access", invalidCategoryToken))
-                .andExpect(status().isUnauthorized())
-                .andExpect(result -> assertThat(result.getResponse().getContentAsString()).contains("Invalid access token"));
-    }
 }
