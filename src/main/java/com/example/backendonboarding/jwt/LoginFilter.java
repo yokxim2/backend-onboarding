@@ -1,7 +1,9 @@
 package com.example.backendonboarding.jwt;
 
+import com.example.backendonboarding.dto.LoginRequestDto;
 import com.example.backendonboarding.entity.Refresh;
 import com.example.backendonboarding.repository.RefreshRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,9 +16,11 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.Date;
 import java.util.Iterator;
+import java.util.Map;
 
 public class LoginFilter extends UsernamePasswordAuthenticationFilter {
 
@@ -30,6 +34,7 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
 
     public LoginFilter(AuthenticationManager authenticationManager, JwtUtil jwtUtil, RefreshRepository refreshRepository) {
         this.authenticationManager = authenticationManager;
+        setFilterProcessesUrl("/sign");
         this.jwtUtil = jwtUtil;
         this.refreshRepository = refreshRepository;
     }
@@ -37,16 +42,30 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
     @Override
     public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response) throws AuthenticationException {
 
-        String username = obtainUsername(request);
-        String password = obtainPassword(request);
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            LoginRequestDto loginRequest = objectMapper.readValue(request.getInputStream(), LoginRequestDto.class);
 
-        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(username, password);
+            String username = loginRequest.getUsername();
+            String password = loginRequest.getPassword();
 
-        return authenticationManager.authenticate(authToken);
+            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(username, password);
+
+            return authenticationManager.authenticate(authToken);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+//        String username = obtainUsername(request);
+//        String password = obtainPassword(request);
+//
+//        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(username, password);
+//
+//        return authenticationManager.authenticate(authToken);
     }
 
     @Override
-    protected void successfulAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain, Authentication authentication) {
+    protected void successfulAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain, Authentication authentication) throws IOException {
         String username = authentication.getName();
 
         Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
@@ -62,6 +81,8 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
         response.setHeader("access", access);
         response.addCookie(createCookie("refresh", refresh));
         response.setStatus(HttpStatus.OK.value());
+        response.setContentType("application/json");
+        response.getWriter().write(new ObjectMapper().writeValueAsString(Map.of("token", access)));
     }
 
     private Cookie createCookie(String key, String value) {
