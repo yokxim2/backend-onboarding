@@ -8,12 +8,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 import static com.example.backendonboarding.jwt.LoginFilter.COOKIE_MAX_AGE;
 
-@RestController
+@Controller
 public class UserController {
 
     private final UserService userService;
@@ -23,7 +25,7 @@ public class UserController {
     }
 
     @PostMapping("/signup")
-    public ResponseEntity<SignupResponseDto> signup(SignupRequestDto requestDto) {
+    public ResponseEntity<SignupResponseDto> signup(@RequestBody SignupRequestDto requestDto) {
         return new ResponseEntity<>(userService.signup(requestDto), HttpStatus.OK);
     }
 
