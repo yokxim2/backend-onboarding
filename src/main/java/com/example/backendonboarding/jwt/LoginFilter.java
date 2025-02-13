@@ -34,7 +34,7 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
 
     public LoginFilter(AuthenticationManager authenticationManager, JwtUtil jwtUtil, RefreshRepository refreshRepository) {
         this.authenticationManager = authenticationManager;
-        setFilterProcessesUrl("/sign");
+        setFilterProcessesUrl("/api/user/sign");
         this.jwtUtil = jwtUtil;
         this.refreshRepository = refreshRepository;
     }
@@ -55,13 +55,6 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-
-//        String username = obtainUsername(request);
-//        String password = obtainPassword(request);
-//
-//        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(username, password);
-//
-//        return authenticationManager.authenticate(authToken);
     }
 
     @Override
